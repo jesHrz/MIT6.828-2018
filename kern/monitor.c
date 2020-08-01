@@ -75,7 +75,7 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
                 info.eip_line,
                 info.eip_fn_namelen,
                 info.eip_fn_name,
-                eip - info.eip_fn_addr);
+                eip - info.eip_fn_addr); 
         ebp = (uint32_t*)*ebp;
     }
 	return 0;
@@ -135,6 +135,9 @@ monitor(struct Trapframe *tf)
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
+    int x = 1, y = 3, z = 4;
+    cprintf("x %d, y %d, z %d\n", x, y, z);
+    cprintf("%b blue %b green %b red %b yellow\n", F_BLUE, F_GREEN, F_RED, F_RED|F_GREEN);
 
 	while (1) {
 		buf = readline("K> ");
