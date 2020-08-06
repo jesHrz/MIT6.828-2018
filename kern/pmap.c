@@ -94,8 +94,6 @@ boot_alloc(uint32_t n)
 	// to any kernel code or global variables.
 	if (!nextfree) {
 		extern char end[];
-        extern char edata[];
-        cprintf("%08x %08x %08x %08x\n", bootstack, bootstacktop, KSTACKTOP, end);
 		nextfree = ROUNDUP((char *) end, PGSIZE);
 	}
 
