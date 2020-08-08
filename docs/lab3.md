@@ -4,7 +4,7 @@
 
 ### Exercise 1
 
-> Q: Modify `mem_init()` in `kern/pmap.c` to allocate and map the `envs` array. This array consists of exactly `NENV` instances of the `Env` structure allocated much like how you allocated the `pages` array. Also like the `pages` array, the memory backing `envs` should also be mapped user read-only at `UENVS` (defined in `inc/memlayout.h`) so user processes can read from this array.
+> Modify `mem_init()` in `kern/pmap.c` to allocate and map the `envs` array. This array consists of exactly `NENV` instances of the `Env` structure allocated much like how you allocated the `pages` array. Also like the `pages` array, the memory backing `envs` should also be mapped user read-only at `UENVS` (defined in `inc/memlayout.h`) so user processes can read from this array.
 >
 > You should run your code and make sure `check_kern_pgdir()` succeeds.
 
@@ -33,7 +33,7 @@ Now we have the array of Enviroments and what we need to do next is initialize i
 
 ### Exercise 2
 
-> Q: In the file `env.c`, finish coding the following functions:
+> In the file `env.c`, finish coding the following functions:
 >
 > - `env_init()`
 >
@@ -165,13 +165,12 @@ We will load all loadable segments from the ELF binary image. The opeartor is hi
 static void
 load_icode(struct Env *e, uint8_t *binary)
 {
-	struct Proghdr * ph, * eph;
+    struct Proghdr * ph, * eph;
     struct Elf * ELFHDR = (struct Elf*)binary;
 
     if(ELFHDR->e_magic != ELF_MAGIC) {
         panic("load_icode: Program not executable\n");
     }
-
 
     ph = (struct Proghdr*) ((uint8_t*)ELFHDR + ELFHDR->e_phoff);
     eph = ph + ELFHDR->e_phnum;
@@ -179,12 +178,13 @@ load_icode(struct Env *e, uint8_t *binary)
     lcr3(PADDR(e->env_pgdir));
 
     for(; ph < eph; ++ph) {
+        if(ph->p_type != ELF_PROG_LOAD) continue;
         if(ph->p_filesz > ph->p_memsz) {
             panic("load_icode: p_filesz > p_memsz\n"); 
         }
         region_alloc(e, (void*)(ph->p_va), ph->p_memsz);          
-        memset((void*)ph->p_va, 0, ph->p_memsz);
-        memcpy((void*)ph->p_va, binary + ph->p_offset, ph->p_memsz);
+        memcpy((void*)ph->p_va, (void*)(binary + ph->p_offset), ph->p_filesz);
+        memset((void*)(ph->p_va + ph->p_filesz), 0, ph->p_memsz - ph->p_filesz);
     }
 
     lcr3(PADDR(kern_pgdir));
@@ -284,7 +284,7 @@ It regards `tf` as a stack and then we can get contents in order by `pop`.
 
 ### Exercise 4
 
-> Q: Edit `trapentry.S` and `trap.c` and implement the features described above. The macros `TRAPHANDLER` and `TRAPHANDLER_NOEC` in `trapentry.S` should help you, as well as the T_* defines in `inc/trap.h`. You will need to add an entry point in `trapentry.S` (using those macros) for each trap defined in `inc/trap.h`, and you'll have to provide `_alltraps` which the `TRAPHANDLER` macros refer to. You will also need to modify `trap_init()` to initialize the `idt` to point to each of these entry points defined in `trapentry.S`; the `SETGATE` macro will be helpful here.
+> Edit `trapentry.S` and `trap.c` and implement the features described above. The macros `TRAPHANDLER` and `TRAPHANDLER_NOEC` in `trapentry.S` should help you, as well as the T_* defines in `inc/trap.h`. You will need to add an entry point in `trapentry.S` (using those macros) for each trap defined in `inc/trap.h`, and you'll have to provide `_alltraps` which the `TRAPHANDLER` macros refer to. You will also need to modify `trap_init()` to initialize the `idt` to point to each of these entry points defined in `trapentry.S`; the `SETGATE` macro will be helpful here.
 >
 > Your `_alltraps` should:
 >
@@ -429,4 +429,107 @@ SETGATE(idt[T_PGFLT], 0, GD_KT, __vectors[13], 3);
 ## This completes Part A
 
 ## Part B
+
+### Exercise 5
+
+> Modify `trap_dispatch()` to dispatch page fault exceptions to `page_fault_handler()`. You should now be able to get make grade to succeed on the `faultread`, `faultreadkernel`, `faultwrite`, and `faultwritekernel` tests. If any of them don't work, figure out why and fix them. Remember that you can boot JOS into a particular user program using make run-*x* or make run-*x*-nox. For instance, make run-hello-nox runs the *hello* user program.
+
+We can distinguish the type of interrupt by `tf_trapno` field in argument `tf`. If the code is `T_PGFLT`, we can invoke `page_falut_handler()` to handler this page fault. Note that we do NOT actually handler the Page Fault, just dispatch it!
+
+Here is the code:
+
+```c
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+    // Handle processor exceptions.
+    // LAB 3: Your code here.
+    switch(tf->tf_trapno) {
+    case T_PGFLT: 
+        page_fault_handler(tf);
+        break;
+    default:
+        // Unexpected trap: The user process or the kernel has a bug.
+        print_trapframe(tf);
+        if (tf->tf_cs == GD_KT)
+            panic("unhandled trap in kernel");
+        else {
+            env_destroy(curenv);
+            return;
+        }
+    }
+}
+```
+
+### Exercise 6
+
+> Modify `trap_dispatch()` to make breakpoint exceptions invoke the kernel monitor. You should now be able to get make grade to succeed on the `breakpoint` test.
+
+Similiar to the way we solve page fault!
+
+```c
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+    // Handle processor exceptions.
+    // LAB 3: Your code here.
+    switch(tf->tf_trapno) {
+    case T_BRKPT:
+        monitor(tf);
+        break;
+    case T_PGFLT: 
+        page_fault_handler(tf);
+        break;
+    default:
+        // Unexpected trap: The user process or the kernel has a bug.
+        print_trapframe(tf);
+        if (tf->tf_cs == GD_KT)
+            panic("unhandled trap in kernel");
+        else {
+            env_destroy(curenv);
+            return;
+        }
+    }
+}
+```
+
+We need to modify the interrupt gate of Breakpoint, set DPL to 3 so that a user application can invoke the trap.
+
+```c
+SETGATE(idt[T_BRKPT], 0, GD_KT, __vectors[3], 3);
+```
+
+> *Challenge!* Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time. You will need to understand certain bits of the `EFLAGS` register in order to implement single-stepping.
+
+The document hint us to read Intel manual about EFLAGS and I find that there is a bit called TF, if the bit is set and CPU will trigger a Debug Exception automatically. So we need to write 2 functions that set and clear this bit.
+
+```c
+int
+mon_continue(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf)	tf->tf_eflags &= ~(FL_TF);
+    return ~0;
+}
+
+int
+mon_stepi(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf)	tf->tf_eflags |= FL_TF;
+    return ~0;
+}
+```
+
+Beacuse CPU will trigger Debug Exception in user mode, we need to change the DPL to 3 ensuring that we can invoke this exception in user mode.
+
+```c
+SETGATE(idt[T_DEBUG], 0, GD_KT, __vectors[1], 3);
+```
+
+> Q: The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to `SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?
+
+DPL must set to 3 so that a user can invoke otherwise Breakpoint Exception will cause General Protection Fault.
+
+> Q: What do you think is the point of these mechanisms, particularly in light of what the `user/softint` test program does?
+
+All the mechanisms are here for protection, avoiding user application's unexpected behaviors.
 
