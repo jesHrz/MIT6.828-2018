@@ -90,6 +90,7 @@ __vectors:
     TRAPHANDLER(t_align, T_ALIGN)
     TRAPHANDLER_NOEC(t_mchk, T_MCHK)
     TRAPHANDLER_NOEC(t_simderr, T_SIMDERR)
+    TRAPHANDLER_NOEC(t_syscall, T_SYSCALL)
 
 /*
  * Lab 3: Your code here for _alltraps

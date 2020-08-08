@@ -363,12 +363,13 @@ load_icode(struct Env *e, uint8_t *binary)
     lcr3(PADDR(e->env_pgdir));
 
     for(; ph < eph; ++ph) {
+        if(ph->p_type != ELF_PROG_LOAD) continue;
         if(ph->p_filesz > ph->p_memsz) {
             panic("load_icode: p_filesz > p_memsz\n"); 
         }
         region_alloc(e, (void*)(ph->p_va), ph->p_memsz);          
-        memset((void*)ph->p_va, 0, ph->p_memsz);
-        memcpy((void*)ph->p_va, binary + ph->p_offset, ph->p_memsz);
+        memcpy((void*)ph->p_va, (void*)(binary + ph->p_offset), ph->p_filesz);
+        memset((void*)(ph->p_va + ph->p_filesz), 0, ph->p_memsz - ph->p_filesz);
     }
 
     lcr3(PADDR(kern_pgdir));

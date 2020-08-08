@@ -66,13 +66,21 @@ trap_init(void)
 
 	// LAB 3: Your code here.
     extern uintptr_t __vectors[];
-    size_t __valid_idx[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19};
+    size_t __valid_idx[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 48};
     size_t i;
     for(i = 0; i < ARRAY_SIZE(__valid_idx); ++i) {
-        SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 0);
+        switch(__valid_idx[i]) {
+        // user mode can invoke
+        case T_BRKPT:
+        case T_DEBUG:
+        case T_SYSCALL:
+            SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 3);
+            break;
+        default:
+            SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 0);
+            break;
+        }
     }
-
-    SETGATE(idt[T_PGFLT], 0, GD_KT, __vectors[13], 3);
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -152,15 +160,34 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
-
-	// Unexpected trap: The user process or the kernel has a bug.
-	print_trapframe(tf);
-	if (tf->tf_cs == GD_KT)
-		panic("unhandled trap in kernel");
-	else {
-		env_destroy(curenv);
-		return;
-	}
+    struct PushRegs* regs;
+    switch(tf->tf_trapno) {
+    case T_DEBUG:
+    case T_BRKPT:
+        monitor(tf);
+        break;
+    case T_PGFLT: 
+        page_fault_handler(tf);
+        break;
+    case T_SYSCALL:
+        regs = &tf->tf_regs;
+        regs->reg_eax = syscall(regs->reg_eax,
+                                regs->reg_edx,
+                                regs->reg_ecx,
+                                regs->reg_ebx,
+                                regs->reg_edi,
+                                regs->reg_esi);
+        break;
+    default:
+        // Unexpected trap: The user process or the kernel has a bug.
+        print_trapframe(tf);
+        if (tf->tf_cs == GD_KT)
+            panic("unhandled trap in kernel");
+        else {
+            env_destroy(curenv);
+            return;
+        }
+    }
 }
 
 void

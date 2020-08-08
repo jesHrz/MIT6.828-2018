@@ -30,6 +30,8 @@ static struct Command commands[] = {
     { "showmappings", "Display the physical page mappings and corresponding permission bits for a range", mon_showmappings },
     { "setperm", "Change permission for a page", mon_setperm },
     { "vmdump", "Dump the contents of a range of memory", mon_vmdump },
+    { "continue", "Continue running until next breakpoint", mon_continue },
+    { "si", "Single-stepping", mon_stepi },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -206,6 +208,23 @@ int mon_vmdump(int argc, char **argv, struct Trapframe* tf) {
     return 0;
 }
 
+int
+mon_continue(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf) {
+        tf->tf_eflags &= ~(FL_TF);
+    } 
+    return ~0;
+}
+
+int
+mon_stepi(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf) {
+        tf->tf_eflags |= FL_TF;
+    }
+    return ~0;
+}
 
 
 /***** Kernel monitor command interpreter *****/
