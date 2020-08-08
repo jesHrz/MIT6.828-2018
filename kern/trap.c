@@ -65,6 +65,14 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
+    extern uintptr_t __vectors[];
+    size_t __valid_idx[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19};
+    size_t i;
+    for(i = 0; i < ARRAY_SIZE(__valid_idx); ++i) {
+        SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 0);
+    }
+
+    SETGATE(idt[T_PGFLT], 0, GD_KT, __vectors[13], 3);
 
 	// Per-CPU setup 
 	trap_init_percpu();
