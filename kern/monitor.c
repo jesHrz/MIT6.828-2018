@@ -13,6 +13,8 @@
 #include <kern/trap.h>
 #include <kern/pmap.h>
 
+#include <kern/env.h>
+
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
 
@@ -30,6 +32,8 @@ static struct Command commands[] = {
     { "showmappings", "Display the physical page mappings and corresponding permission bits for a range", mon_showmappings },
     { "setperm", "Change permission for a page", mon_setperm },
     { "vmdump", "Dump the contents of a range of memory", mon_vmdump },
+    { "continue", "Continue running until next breakpoint", mon_continue },
+    { "si", "Single-stepping", mon_stepi },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -65,15 +69,19 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
     cprintf("Stack backtrace:\n");
+
     int i;
+    struct Eipdebuginfo info;
     uint32_t* ebp = (uint32_t*)read_ebp();
+
     while(ebp) {
         uint32_t eip = *(ebp + 1);
+
         cprintf("  ebp %08x  eip %08x  args", ebp, eip);
         for(i = 0; i < 5; ++i) {
             cprintf(" %08x", *(ebp + 2 + i));
         }
-        struct Eipdebuginfo info;
+
         debuginfo_eip(eip, &info); 
         cprintf("\n         %s:%d: %.*s+%d\n", 
                 info.eip_file,
@@ -81,8 +89,10 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
                 info.eip_fn_namelen,
                 info.eip_fn_name,
                 eip - info.eip_fn_addr); 
+
         ebp = (uint32_t*)*ebp;
     }
+
 	return 0;
 }
 
@@ -120,11 +130,14 @@ mon_showmappings(int argc, char **argv, struct Trapframe* tf)
     }
     
     extern pde_t *kern_pgdir;
+    extern struct Env* curenv;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+    cprintf("pgdir at %08x\n", pgdir);
 
     uint32_t va;
     pte_t* pte;
     for(va = begin; va <= end; va += PGSIZE) {
-        pte = pgdir_walk(kern_pgdir, (void*)va, 0);
+        pte = pgdir_walk(pgdir, (void*)va, 0);
         cprintf("va %08x => ", va);
         _page_descriptor_info(pte);
         cprintf("\n");
@@ -140,7 +153,10 @@ int mon_setperm(int argc, char **argv, struct Trapframe* tf) {
 
     uint32_t va = (uint32_t)strtol(argv[1], NULL, 16);
 
-    pte_t* pte = pgdir_walk(kern_pgdir, (void*)va, 0);
+    extern pde_t *kern_pgdir;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+
+    pte_t* pte = pgdir_walk(pgdir, (void*)va, 0);
     if(!pte || !(*pte & PTE_P)) {
         cprintf("va=%08x not mapped\n", va);
         return 0;
@@ -193,10 +209,13 @@ int mon_vmdump(int argc, char **argv, struct Trapframe* tf) {
     size_t size = (size_t)strtol(argv[1] + 1, NULL, 10);
     uint32_t* va = (uint32_t*)strtol(argv[2], NULL, 16);
 
+    extern pde_t *kern_pgdir;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+
     size_t i;
     pte_t* pte;
     for(i = 0; i < size; ++i) {
-        pte = pgdir_walk(kern_pgdir, (void*)(va + i), 0);
+        pte = pgdir_walk(pgdir, (void*)(va + i), 0);
         if(!pte || !(*pte & PTE_P)) {
             cprintf("%08x: Cannot access memory\n");
         } else {
@@ -206,6 +225,23 @@ int mon_vmdump(int argc, char **argv, struct Trapframe* tf) {
     return 0;
 }
 
+int
+mon_continue(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf) {
+        tf->tf_eflags &= ~(FL_TF);
+    } 
+    return ~0;
+}
+
+int
+mon_stepi(int argc, char **argv, struct Trapframe* tf)
+{
+    if(tf) {
+        tf->tf_eflags |= FL_TF;
+    }
+    return ~0;
+}
 
 
 /***** Kernel monitor command interpreter *****/

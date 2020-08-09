@@ -14,16 +14,17 @@
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
 // Destroys the environment on memory errors.
-static void
+static int
 sys_cputs(const char *s, size_t len)
 {
 	// Check that the user has permission to read memory [s, s+len).
 	// Destroy the environment if not.
 
 	// LAB 3: Your code here.
+    user_mem_assert(curenv, s, len, 0);
 
 	// Print the string supplied by the user.
-	cprintf("%.*s", len, s);
+	return cprintf("%.*s", len, s);
 }
 
 // Read a character from the system console without blocking.
@@ -70,11 +71,25 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	// Return any appropriate return value.
 	// LAB 3: Your code here.
 
-	panic("syscall not implemented");
+	// panic("syscall not implemented");
 
+    int32_t syscall_ret;
 	switch (syscallno) {
+    case SYS_cputs:
+        syscall_ret = sys_cputs((char*)a1, a2);
+        break;
+    case SYS_cgetc:
+        syscall_ret = sys_cgetc();
+        break;
+    case SYS_getenvid:
+        syscall_ret = sys_getenvid();
+        break;
+    case SYS_env_destroy:
+        syscall_ret = sys_env_destroy(a1);
+        break;
 	default:
 		return -E_INVAL;
 	}
+    return syscall_ret;
 }
 
