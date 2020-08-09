@@ -13,6 +13,8 @@
 #include <kern/trap.h>
 #include <kern/pmap.h>
 
+#include <kern/env.h>
+
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
 
@@ -128,11 +130,14 @@ mon_showmappings(int argc, char **argv, struct Trapframe* tf)
     }
     
     extern pde_t *kern_pgdir;
+    extern struct Env* curenv;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+    cprintf("pgdir at %08x\n", pgdir);
 
     uint32_t va;
     pte_t* pte;
     for(va = begin; va <= end; va += PGSIZE) {
-        pte = pgdir_walk(kern_pgdir, (void*)va, 0);
+        pte = pgdir_walk(pgdir, (void*)va, 0);
         cprintf("va %08x => ", va);
         _page_descriptor_info(pte);
         cprintf("\n");
@@ -148,7 +153,10 @@ int mon_setperm(int argc, char **argv, struct Trapframe* tf) {
 
     uint32_t va = (uint32_t)strtol(argv[1], NULL, 16);
 
-    pte_t* pte = pgdir_walk(kern_pgdir, (void*)va, 0);
+    extern pde_t *kern_pgdir;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+
+    pte_t* pte = pgdir_walk(pgdir, (void*)va, 0);
     if(!pte || !(*pte & PTE_P)) {
         cprintf("va=%08x not mapped\n", va);
         return 0;
@@ -201,10 +209,13 @@ int mon_vmdump(int argc, char **argv, struct Trapframe* tf) {
     size_t size = (size_t)strtol(argv[1] + 1, NULL, 10);
     uint32_t* va = (uint32_t*)strtol(argv[2], NULL, 16);
 
+    extern pde_t *kern_pgdir;
+    pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
+
     size_t i;
     pte_t* pte;
     for(i = 0; i < size; ++i) {
-        pte = pgdir_walk(kern_pgdir, (void*)(va + i), 0);
+        pte = pgdir_walk(pgdir, (void*)(va + i), 0);
         if(!pte || !(*pte & PTE_P)) {
             cprintf("%08x: Cannot access memory\n");
         } else {
