@@ -533,3 +533,293 @@ DPL must set to 3 so that a user can invoke otherwise Breakpoint Exception will 
 
 All the mechanisms are here for protection, avoiding user application's unexpected behaviors.
 
+### Exercise 7
+
+> Add a handler in the kernel for interrupt vector `T_SYSCALL`. You will have to edit `kern/trapentry.S` and `kern/trap.c`'s `trap_init()`. You also need to change `trap_dispatch()` to handle the system call interrupt by calling `syscall()` (defined in `kern/syscall.c`) with the appropriate arguments, and then arranging for the return value to be passed back to the user process in `%eax`. Finally, you need to implement `syscall()` in `kern/syscall.c`. Make sure `syscall()` returns `-E_INVAL` if the system call number is invalid. You should read and understand `lib/syscall.c` (especially the inline assembly routine) in order to confirm your understanding of the system call interface. Handle all the system calls listed in `inc/syscall.h` by invoking the corresponding kernel function for each call.
+>
+> Run the `user/hello` program under your kernel (make run-hello). It should print "`hello, world`" on the console and then cause a page fault in user mode. If this does not happen, it probably means your system call handler isn't quite right. You should also now be able to get make grade to succeed on the `testbss` test.
+
+Firstly we add a handler for interrupt vector `T_SYSCALL` in file `kern/trapentry.S` using marco `TRAPHANDLER_NOEC`
+
+```asm
+.data
+    .globl __vectors
+__vectors:
+.text
+    TRAPHANDLER_NOEC(t_divide, T_DIVIDE)
+    TRAPHANDLER_NOEC(t_debug, T_DEBUG) 
+    TRAPHANDLER_NOEC(t_nmi, T_NMI)
+    TRAPHANDLER_NOEC(t_brkpt, T_BRKPT)
+    TRAPHANDLER_NOEC(t_oflow, T_OFLOW)
+    TRAPHANDLER_NOEC(t_bound, T_BOUND)
+    TRAPHANDLER_NOEC(t_illop, T_ILLOP)
+    TRAPHANDLER_NOEC(t_device, T_DEVICE)
+    TRAPHANDLER(t_dblflt, T_DBLFLT)
+    TRAPHANDLER(t_tss, T_TSS)
+    TRAPHANDLER(t_segnp, T_SEGNP)
+    TRAPHANDLER(t_stack, T_STACK)
+    TRAPHANDLER(t_gpflt, T_GPFLT)
+    TRAPHANDLER(t_pgflt, T_PGFLT)
+    TRAPHANDLER_NOEC(t_fperr, T_FPERR)
+    TRAPHANDLER(t_align, T_ALIGN)
+    TRAPHANDLER_NOEC(t_mchk, T_MCHK)
+    TRAPHANDLER_NOEC(t_simderr, T_SIMDERR)
+    /* add handler for T_SYSCALL */
+    TRAPHANDLER_NOEC(t_syscall, T_SYSCALL)
+```
+
+and set interrupte gate in `kern/trap.c`, function `trap_init` for `T_SYSCALL`
+
+```c
+void
+trap_init(void)
+{
+    extern struct Segdesc gdt[];
+
+    // LAB 3: Your code here.
+    extern uintptr_t __vectors[];
+    size_t __valid_idx[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 48};	// T_SYSCALL is 0x30, 48 in decimal
+    size_t i;
+    for(i = 0; i < ARRAY_SIZE(__valid_idx); ++i) {
+        SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 0);
+    }
+
+    // Per-CPU setup 
+    trap_init_percpu();
+}
+```
+
+Then we will handl it in `trap_dispatch`. There is already an interface in file `kern/syscall.c` and we just pass arguments and get return value.
+
+```c
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+    struct PushRegs * regs;
+    switch(tf->trapno) {
+    ...
+	case T_SYSCALL:
+        regs = &tf->tf_regs;
+        regs->reg_eax = syscall(regs->reg_eax,
+                                regs->reg_edx,
+                                regs->reg_ecx,
+                                regs->reg_ebx,
+                                regs->reg_edi,
+                                regs->reg_esi);
+        break;
+    ...
+    }
+}
+
+int32_t syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
+```
+
+The statement of `syscall` tells us that the first argument is syscall number that indicates the type of syscall and the last 5 arguments are the arguments that user application pass to kernel for syscall. They come from `$eax`, `$edx`, `$ecx`, `$ebx`, `$edi` and `$esi`. The result will be writen to `$eax`.
+
+In this function we need to handl the request of syscall according to `syscallno` and use the argusments to invoke syscall correctlly.
+
+```c
+int32_t
+syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
+{
+    // Call the function corresponding to the 'syscallno' parameter.
+    // Return any appropriate return value.
+    // LAB 3: Your code here.
+    int32_t syscall_ret;
+    switch (syscallno) {
+    case SYS_cputs:
+        syscall_ret = sys_cputs((char*)a1, a2);
+        break;
+    case SYS_cgetc:
+        syscall_ret = sys_cgetc();
+        break;
+    case SYS_getenvid:
+        syscall_ret = sys_getenvid();
+        break;
+    case SYS_env_destroy:
+        syscall_ret = sys_env_destroy(a1);
+        break;
+    default:
+        return -E_INVAL;
+    }
+    return syscall_ret;
+}
+```
+
+Here I make a modifacation on `sys_cputs` that it will return the number of characters writen successfully.
+
+> *Challenge!* Implement system calls using the `sysenter` and `sysexit` instructions instead of using `int 0x30` and `iret`.
+
+The way invoking syscall using `sysenter` and `sysexit` is not compatible with the following lab so I do not to want implement it.
+
+### Exercise 8
+
+> Add the required code to the user library, then boot your kernel. You should see `user/hello` print "`hello, world`" and then print "`i am environment 00001000`". `user/hello` then attempts to "exit" by calling `sys_env_destroy()` (see `lib/libmain.c` and `lib/exit.c`). Since the kernel currently only supports one user environment, it should report that it has destroyed the only environment and then drop into the kernel monitor. You should be able to get make grade to succeed on the `hello` test.
+
+In JOS we create a real entrance for a user application so that the `umain` is not the real entrance at all. We can see the real entrance in file `lib/entry.S`. In this entrance we initialize some global variables like `envs`, `pages`, `uvpd` and `uvpt`, then we push two arguments to the stack and call `libmain`. In function `libmain` we initialize some special variables like `thisenv` and `binaryname` for the user application and then invoke `umain`, the entrance of user application. After application return, we destroy the enviroment.
+
+To initialize `thisenv` we can use system call `sys_getenvid`.
+
+```c
+thisenv = envs + ENVX(sys_getenvid());
+```
+
+### Exercise 9
+
+> Change `kern/trap.c` to panic if a page fault happens in kernel mode.
+>
+> Hint: to determine whether a fault happened in user mode or in kernel mode, check the low bits of the `tf_cs`.
+>
+> Read `user_mem_assert` in `kern/pmap.c` and implement `user_mem_check` in that same file.
+>
+> Change `kern/syscall.c` to sanity check arguments to system calls.
+>
+> Boot your kernel, running `user/buggyhello`. The environment should be destroyed, and the kernel should *not* panic. You should see:
+>
+> ```
+> 	[00001000] user_mem_check assertion failure for va 00000001
+> 	[00001000] free env 00001000
+> 	Destroyed the only environment - nothing more to do!
+> ```
+
+We will handle page fault interrupt in `page_fault_handler`. First of all we will check where the page fault happended. If it is in kernel, that means we cannot access our's data structure and the kernel is buggy so it is unexpected, the kernel should panic. We can check the low 3 bits of `tf_cs` , the RPL, which will be 3 in user mode and 0 in kernel mode.
+
+```c
+void
+page_fault_handler(struct Trapframe *tf)
+{
+    uint32_t fault_va;
+
+    // Read processor's CR2 register to find the faulting address
+    fault_va = rcr2();
+
+    // Handle kernel-mode page faults.
+
+    // LAB 3: Your code here.
+    if((tf->tf_cs & 3) == 0) {
+        panic("kernel page fault at %08x\n", fault_va);
+    }
+	...
+}
+```
+
+Secondly we need to check the pointor of syscall arguments from user application. This pointor should be accessible for user application. If it is invalid, the syscall should deny it.
+
+Now we need to complete `user_mem_check` and check the address in `sys_cputs` using `user_mem_assert`
+
+```c
+int
+user_mem_check(struct Env *env, const void *va, size_t len, int perm)
+{
+    // LAB 3: Your code here.
+    // align both the begining address and end address to PGSIZE
+    uintptr_t begin = ROUNDDOWN((uintptr_t)va, PGSIZE);
+    uintptr_t end = begin + ROUNDUP(len, PGSIZE);
+    pte_t* pte;
+
+    perm |= PTE_P;
+
+    for(; begin < end; begin += PGSIZE) {
+        pte = pgdir_walk(env->env_pgdir, (void*)begin, 0);
+        if(begin >= ULIM || !pte || (*pte & perm) != perm) {
+            // if va is invalid at the begining we should save va to user_mem_check_addr
+            // not begin
+            user_mem_check_addr = (begin >= (uintptr_t)va ? begin : (uintptr_t)va);
+            return -E_FAULT;
+        }
+    }
+
+    return 0;
+}
+```
+
+```c
+static int
+sys_cputs(const char *s, size_t len)
+{
+    // Check that the user has permission to read memory [s, s+len).
+    // Destroy the environment if not.
+
+    // LAB 3: Your code here.
+    user_mem_assert(curenv, s, len, 0);
+
+    // Print the string supplied by the user.
+    return cprintf("%.*s", len, s);
+}
+```
+
+> Finally, change `debuginfo_eip` in `kern/kdebug.c` to call `user_mem_check` on `usd`, `stabs`, and `stabstr`. 
+
+Add this code in `debuginfo_eip` to avoid kernel page fault, we can use `user_mem_check`
+
+```c
+        // Make sure this memory is valid.
+        // Return -1 if it is not.  Hint: Call user_mem_check.
+        // LAB 3: Your code here.
+        if(user_mem_check(curenv, usd, sizeof(struct UserStabData), PTE_U | PTE_P) < 0) 
+            return -1;
+		...
+        // Make sure the STABS and string table memory is valid.
+        // LAB 3: Your code here.
+        if(user_mem_check(curenv, stabs, stab_end - stabs, PTE_U | PTE_P) < 0) 
+            return -1;
+
+        if(user_mem_check(curenv, stabstr, stabstr_end - stabstr, PTE_U | PTE_P) < 0) 
+            return -1;
+```
+
+> Q: If you now run `user/breakpoint`, you should be able to run backtrace from the kernel monitor and see the backtrace traverse into `lib/libmain.c` before the kernel panics with a page fault. What causes this page fault? You don't need to fix it, but you should understand why it happens.
+
+When I invoke `backtrace`, Page Fault occured.
+
+```
+Stack backtrace:
+  ebp efffff10  eip f0100cc3  args 00000001 efffff28 f01c1000 00000000 f017f980
+         kern/monitor.c:294: monitor+268
+  ebp efffff80  eip f0103f9a  args f01c1000 efffffbc 00000000 00000000 00000000
+         kern/trap.c:167: trap+198
+  ebp efffffb0  eip f01040c1  args efffffbc 00000000 00000000 eebfdfd0 efffffdc
+         kern/trapentry.S:109: <unknown>+0
+  ebp eebfdfd0  eip 0080007f  args 00000000 00000000 00000000 00000000 00000000
+         lib/libmain.c:26: libmain+67
+  ebp eebfdff0  eip 00800031  args 00000000 00000000Incoming TRAP frame at 0xeffffe7c
+kernel panic at kern/trap.c:244: kernel page fault at eebfe000
+```
+
+Ok, the above information shows that the page fault occurs at 0xeebfe000 which is exactlly `USTACKTOP`. That means we did not map `USTACKTOP` correctlly. Recall that we allocate pages for user stack in `load_icode`, we allocate one page for va [USTACKTOP - PGSIZE, USTACKTOP - 1] and `USTACKTOP` is not mapped here, to solve this we can map two pages for the user stack.
+
+```c
+region_alloc(e, (void*)(USTACKTOP - PGSIZE), PGSIZE * 2);
+```
+
+The result is following and note that the value above 0xeebfe000 is nonsense.
+
+```
+Stack backtrace:
+  ebp efffff10  eip f0100d11  args 00000001 efffff28 f01c1000 00000000 f017f980
+         kern/monitor.c:305: monitor+268
+  ebp efffff80  eip f0103fea  args f01c1000 efffffbc 00000000 00000000 00000000
+         kern/trap.c:167: trap+198
+  ebp efffffb0  eip f0104111  args efffffbc 00000000 00000000 eebfdfd0 efffffdc
+         kern/trapentry.S:109: <unknown>+0
+  ebp eebfdfd0  eip 0080007f  args 00000000 00000000 00000000 00000000 00000000
+         lib/libmain.c:26: libmain+67
+  ebp eebfdff0  eip 00800031  args 00000000 00000000 97979797 97979797 97979797
+         lib/entry.S:34: <unknown>+0
+```
+
+### Exercise 10
+
+> Boot your kernel, running `user/evilhello`. The environment should be destroyed, and the kernel should not panic. You should see:
+>
+> ```
+> 	[00000000] new env 00001000
+> 	...
+> 	[00001000] user_mem_check assertion failure for va f010000c
+> 	[00001000] free env 00001000
+> ```
+
+When we pass the test in exercise, this test will automaticly passes.
+
+## This completes part B
+# This completes the lab :)
