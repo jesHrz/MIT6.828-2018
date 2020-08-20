@@ -5,6 +5,7 @@
 #include <inc/kbdreg.h>
 #include <inc/string.h>
 #include <inc/assert.h>
+#include <inc/console_attr.h>
 
 #include <kern/console.h>
 #include <kern/trap.h>
@@ -160,13 +161,14 @@ cga_init(void)
 }
 
 
-
 static void
 cga_putc(int c)
 {
 	// if no attribute given, then use black on white
+    // upper 4 bit of attr - background
+    // lower 4 bit of attr - frontground
 	if (!(c & ~0xFF))
-		c |= 0x0700;
+		c |= attr;
 
 	switch (c & 0xff) {
 	case '\b':
@@ -194,6 +196,7 @@ cga_putc(int c)
 	}
 
 	// What is the purpose of this?
+    // answer: roll to next line, move to the begining and fill the last line with blanks
 	if (crt_pos >= CRT_SIZE) {
 		int i;
 
@@ -456,7 +459,6 @@ cons_init(void)
 
 
 // `High'-level console I/O.  Used by readline and cprintf.
-
 void
 cputchar(int c)
 {

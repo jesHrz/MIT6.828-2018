@@ -7,6 +7,7 @@
 #endif
 
 #include <inc/types.h>
+#include <inc/console_attr.h>
 
 #define MONO_BASE	0x3B4
 #define MONO_BUF	0xB0000
