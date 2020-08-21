@@ -130,7 +130,6 @@ mon_showmappings(int argc, char **argv, struct Trapframe* tf)
     }
     
     extern pde_t *kern_pgdir;
-    extern struct Env* curenv;
     pde_t* pgdir = curenv ? curenv->env_pgdir : kern_pgdir;
     cprintf("pgdir at %08x\n", pgdir);
 

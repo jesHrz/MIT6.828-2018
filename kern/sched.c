@@ -31,6 +31,18 @@ sched_yield(void)
 	// LAB 4: Your code here.
 
 	// sched_halt never returns
+    size_t i, base = curenv ? ENVX(curenv->env_id) : 0;
+    for(i = 0; i < NENV; ++i) {
+        idle = &envs[(base + i) % NENV];
+        if(idle->env_status == ENV_RUNNABLE) {
+            env_run(idle);
+        }
+    } 
+
+    if(curenv && curenv->env_status == ENV_RUNNING) {
+        env_run(curenv);
+    }
+
 	sched_halt();
 }
 
