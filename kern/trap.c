@@ -72,10 +72,32 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
-    extern uintptr_t __vectors[];
-    size_t __valid_idx[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 48};
     size_t i;
-    for(i = 0; i < ARRAY_SIZE(__valid_idx); ++i) {
+    extern uintptr_t __vectors[];
+
+    size_t __valid_idx[] = {
+        T_DIVIDE,   // 0
+        T_DEBUG,    // 1
+        T_NMI,      // 2
+        T_BRKPT,    // 3
+        T_OFLOW,    // 4
+        T_BOUND,    // 5
+        T_ILLOP,    // 6
+        T_DEVICE,   // 7
+        T_DBLFLT,   // 8
+        T_TSS,      // 10
+        T_SEGNP,    // 11
+        T_STACK,    // 12
+        T_GPFLT,    // 13
+        T_PGFLT,    // 14
+        T_FPERR,    // 16
+        T_ALIGN,    // 17
+        T_MCHK,     // 18
+        T_SIMDERR,  // 19
+        T_SYSCALL,  // 48
+    };
+    size_t vector_size = ARRAY_SIZE(__valid_idx);
+    for(i = 0; i < vector_size; ++i) {
         switch(__valid_idx[i]) {
         // user mode can invoke
         case T_BRKPT:
@@ -87,6 +109,19 @@ trap_init(void)
             SETGATE(idt[__valid_idx[i]], 0, GD_KT, __vectors[i], 0);
             break;
         }
+    }
+
+    size_t __irq_idx[] = {
+        IRQ_TIMER,
+        IRQ_KBD,
+        IRQ_SERIAL,
+        IRQ_SPURIOUS,
+        IRQ_IDE,
+        IRQ_ERROR
+    };
+    size_t irq_size = ARRAY_SIZE(__irq_idx);
+    for(i = 0; i < irq_size; ++i) {
+        SETGATE(idt[IRQ_OFFSET + __irq_idx[i]], 0, GD_KT, __vectors[vector_size + i], 0);
     }
 
 	// Per-CPU setup 
@@ -205,18 +240,8 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 
-	// Handle spurious interrupts
-	// The hardware sometimes raises these because of noise on the
-	// IRQ line or other reasons. We don't care.
-	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SPURIOUS) {
-		cprintf("Spurious interrupt on irq 7\n");
-		print_trapframe(tf);
-		return;
-	}
+	
 
-	// Handle clock interrupts. Don't forget to acknowledge the
-	// interrupt using lapic_eoi() before calling the scheduler!
-	// LAB 4: Your code here.
     struct PushRegs* regs;
     switch(tf->tf_trapno) {
     case T_DEBUG:
@@ -235,6 +260,20 @@ trap_dispatch(struct Trapframe *tf)
                                 regs->reg_edi,
                                 regs->reg_esi);
         break;
+    case IRQ_OFFSET + IRQ_TIMER:
+    // Handle clock interrupts. Don't forget to acknowledge the
+	// interrupt using lapic_eoi() before calling the scheduler!
+	// LAB 4: Your code here.
+        lapic_eoi();
+        sched_yield();
+        break;
+    case IRQ_OFFSET + IRQ_SPURIOUS:
+    // Handle spurious interrupts
+	// The hardware sometimes raises these because of noise on the
+	// IRQ line or other reasons. We don't care.
+		cprintf("Spurious interrupt on irq 7\n");
+		print_trapframe(tf);
+	    break;
     default:
         // Unexpected trap: The user process or the kernel has a bug.
         print_trapframe(tf);
@@ -320,7 +359,7 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 3: Your code here.
     if((tf->tf_cs & 3) == 0) {
-        panic("kernel page fault at %08x\n", fault_va);
+        panic("kernel page fault va %08x ip %08x\n", fault_va, tf->tf_eip);
     }
 
 	// We've already handled kernel-mode exceptions, so if we get here,

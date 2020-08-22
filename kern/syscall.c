@@ -340,7 +340,53 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	// panic("sys_ipc_try_send not implemented");
+    struct Env* e;
+    struct PageInfo* p;
+    pte_t* pte;
+    int r;
+
+    //	-E_BAD_ENV if environment envid doesn't currently exist.
+    if((r = envid2env(envid, &e, 0)) < 0)
+        return -E_BAD_ENV;
+
+    //	-E_IPC_NOT_RECV if envid is not currently blocked in sys_ipc_recv,
+    //		or another environment managed to send first.
+    if(!e->env_ipc_recving)
+        return -E_IPC_NOT_RECV;
+    
+    e->env_ipc_perm = 0;
+
+    if((uintptr_t)srcva < UTOP) {
+        //	-E_INVAL if srcva < UTOP but srcva is not page-aligned.
+        if((uintptr_t)srcva & 0xFFF)
+            return -E_INVAL;
+        //	-E_INVAL if srcva < UTOP but srcva is not mapped in the caller's
+        //		address space.
+        if(!(p = page_lookup(curenv->env_pgdir, srcva, &pte)))
+            return -E_INVAL; 
+        
+        //	-E_INVAL if srcva < UTOP and perm is inappropriate
+        if((*pte & (PTE_U|PTE_P)) != (PTE_U|PTE_P))
+            return -E_INVAL;
+        if((perm & PTE_W) && !(*pte & PTE_W))
+            return -E_INVAL;
+
+        if((uintptr_t)e->env_ipc_dstva < UTOP) {
+            if((r = page_insert(e->env_pgdir, p, e->env_ipc_dstva, perm)) < 0)
+                return -E_NO_MEM;
+            e->env_ipc_perm = perm;
+        }
+    }
+
+    e->env_ipc_recving = 0;
+    e->env_ipc_from = curenv->env_id;
+    e->env_ipc_value = value;
+
+    e->env_tf.tf_regs.reg_eax = 0;
+    e->env_status = ENV_RUNNABLE;
+
+    return 0;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -358,7 +404,15 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	// panic("sys_ipc_recv not implemented");
+    if((uintptr_t)dstva < UTOP && (uintptr_t)dstva & 0xFFF)
+        return -E_INVAL;
+    
+    curenv->env_ipc_recving = 1;
+    curenv->env_ipc_dstva = dstva;
+    curenv->env_status = ENV_NOT_RUNNABLE;
+
+    sched_yield();
 	return 0;
 }
 

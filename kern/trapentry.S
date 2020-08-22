@@ -93,6 +93,15 @@ __vectors:
     TRAPHANDLER_NOEC(t_simderr, T_SIMDERR)
     TRAPHANDLER_NOEC(t_syscall, T_SYSCALL)
 
+/* IRQ */
+    TRAPHANDLER_NOEC(i_timer, IRQ_OFFSET + IRQ_TIMER)
+    TRAPHANDLER_NOEC(i_kbd, IRQ_OFFSET + IRQ_KBD)
+    TRAPHANDLER_NOEC(i_serial, IRQ_OFFSET + IRQ_SERIAL)
+    TRAPHANDLER_NOEC(i_spurious, IRQ_OFFSET + IRQ_SPURIOUS)
+    TRAPHANDLER_NOEC(i_ide, IRQ_OFFSET + IRQ_IDE)
+    TRAPHANDLER_NOEC(i_error, IRQ_OFFSET + IRQ_ERROR)
+
+
 /*
  * Lab 3: Your code here for _alltraps
  */
