@@ -7,6 +7,8 @@
 #include <inc/string.h>
 #include <inc/stdarg.h>
 #include <inc/error.h>
+#include <inc/console_attr.h>
+
 
 /*
  * Space or zero padding and a field width are supported for the numeric
@@ -99,8 +101,10 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 
 	while (1) {
 		while ((ch = *(unsigned char *) fmt++) != '%') {
-			if (ch == '\0')
+			if (ch == '\0') {
+                attr = B_BLACK | F_WHITE;
 				return;
+            }
 			putch(ch, putdat);
 		}
 
@@ -215,6 +219,10 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		// (unsigned) octal
 		case 'o':
 			// Replace this with your code.
+            num = getuint(&ap, lflag);
+            base = 8;
+            goto number;
+
 			putch('X', putdat);
 			putch('X', putdat);
 			putch('X', putdat);
@@ -233,6 +241,14 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		case 'x':
 			num = getuint(&ap, lflag);
 			base = 16;
+            goto number;
+        
+        // change the front attribute
+        case 'b':
+            num = getuint(&ap, lflag);
+            attr = num;
+            break;
+
 		number:
 			printnum(putch, putdat, num, base, width, padc);
 			break;
