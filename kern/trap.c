@@ -363,7 +363,9 @@ page_fault_handler(struct Trapframe *tf)
 		} else {
 			utf = (struct UTrapframe*)(UXSTACKTOP - sizeof(struct UTrapframe));
 		}
-		user_mem_assert(curenv, (void*)utf, sizeof(struct UTrapframe), PTE_W);
+
+		user_mem_assert(curenv, (void*)utf, sizeof(struct UTrapframe) + 4, PTE_W);
+
 		utf->utf_fault_va = fault_va;
 		utf->utf_err = tf->tf_err;
 		utf->utf_regs = tf->tf_regs;
@@ -371,8 +373,8 @@ page_fault_handler(struct Trapframe *tf)
 		utf->utf_eflags = tf->tf_eflags;
 		utf->utf_esp = tf->tf_esp;
 
-		tf->tf_esp = (uintptr_t)utf;
 		tf->tf_eip = (uintptr_t)curenv->env_pgfault_upcall;
+		tf->tf_esp = (uintptr_t)utf;
 
 		env_run(curenv);
 	}

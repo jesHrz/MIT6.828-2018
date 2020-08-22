@@ -89,15 +89,14 @@ sys_exofork(void)
     struct Env* e;
     int r;
 
-    if((r = env_alloc(&e, curenv->env_id)) < 0) {
+    if((r = env_alloc(&e, curenv->env_id)) < 0) 
         return r;
-    }
 
-    e->env_status = ENV_RUNNABLE;
     e->env_tf = curenv->env_tf;
-
     e->env_tf.tf_regs.reg_eax = 0;
     
+    e->env_status = ENV_NOT_RUNNABLE;
+
     return e->env_id;
 }
 
@@ -126,9 +125,8 @@ sys_env_set_status(envid_t envid, int status)
     struct Env* e;
     int r;
 
-    if((r = envid2env(envid, &e, 1)) < 0) {
+    if((r = envid2env(envid, &e, 1)) < 0) 
         return -E_BAD_ENV;
-    }
 
     e->env_status = status;
 
@@ -153,6 +151,8 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func)
 
 	if((r = envid2env(envid, &e, 1)) < 0)
 		return r;
+
+    user_mem_assert(e, func, 1, PTE_U|PTE_P);
 
 	e->env_pgfault_upcall = func;
 
@@ -191,10 +191,7 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	struct PageInfo* p;
 	int r;
 
-	if((perm & (PTE_U | PTE_P)) == 0)
-		return -E_INVAL;
-
-	if((perm & ~(PTE_AVAIL | PTE_W | PTE_U | PTE_P)) != 0)
+	if((perm & (PTE_U | PTE_P)) != (PTE_U | PTE_P))
 		return -E_INVAL;
 
 	if((uintptr_t)va >= UTOP || ((uintptr_t)va & 0xFFF))
@@ -203,7 +200,8 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	if((r = envid2env(envid, &e, 1)) < 0)
 		return r;
 
-	p = page_alloc(ALLOC_ZERO);
+	if(!(p = page_alloc(ALLOC_ZERO)))
+        return -E_NO_MEM;
 	if((r = page_insert(e->env_pgdir, p, va, perm)) < 0) {
 		page_free(p);
 		return r;
@@ -245,10 +243,7 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	pte_t* pte;
 	int r;
 
-	if((perm & (PTE_U | PTE_P)) == 0)
-		return -E_INVAL;
-
-	if((perm & ~(PTE_AVAIL | PTE_W | PTE_U | PTE_P)) != 0)
+	if((perm & (PTE_U | PTE_P)) != (PTE_U | PTE_P))
 		return -E_INVAL;
 
 	if((uintptr_t)srcva >= UTOP || ((uintptr_t)srcva & 0xFFF))
@@ -263,10 +258,8 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	if((r = envid2env(dstenvid, &dstenv, 1)) < 0)
 		return r;
 
-	p = page_lookup(srcenv->env_pgdir, srcva, &pte);
-
-	if(!p)
-		return -E_INVAL;
+	if(!(p = page_lookup(srcenv->env_pgdir, srcva, &pte)))
+        return -E_INVAL;
 
 	if((perm & PTE_W) && !(*pte & PTE_W))
 		return -E_INVAL;

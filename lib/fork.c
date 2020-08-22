@@ -38,7 +38,7 @@ pgfault(struct UTrapframe *utf)
 	// LAB 4: Your code here.
 	// panic("pgfault not implemented");
     addr = ROUNDDOWN(addr, PGSIZE);
-    if((r = sys_page_alloc(0, (void*)PFTEMP, PTE_U|PTE_P|PTE_W)) < 0)
+    if((r = sys_page_alloc(0, (void*)PFTEMP, PTE_W|PTE_U|PTE_P)) < 0)
         panic("page alloc err: %e", r);
     
     memmove((void*)PFTEMP, addr, PGSIZE);
