@@ -70,6 +70,10 @@ duppage(envid_t envid, unsigned pn)
 	// panic("duppage not implemented");
 	int perm = PTE_U | PTE_P;
 	void* addr = (void*)(pn * PGSIZE);
+    if(uvpt[pn] & PTE_SHARE) {
+        return sys_page_map(0, addr, envid, addr, uvpt[pn] & PTE_SYSCALL);
+    }
+
 	if(uvpt[pn] & (PTE_W | PTE_COW))
 		perm |= PTE_COW;
 
@@ -121,7 +125,10 @@ fork(void)
 	}
 
 	for(addr = (void*)UTEXT; addr < (void*) USTACKTOP; addr += PGSIZE) {
-        if((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & (PTE_P|PTE_U))) {
+        if((uvpd[PDX(addr)] & PTE_P) && 
+            (uvpt[PGNUM(addr)] & PTE_P) && 
+            (uvpt[PGNUM(addr)] & PTE_U)) 
+        {
             r = duppage(envid, PGNUM(addr));
             if(r < 0)
                 panic("duppage err: %e", r);
